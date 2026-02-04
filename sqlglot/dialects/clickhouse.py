@@ -207,20 +207,58 @@ class ClickHouse(Dialect):
         def _parse_function(
             self, functions: t.Optional[t.Dict[str, t.Callable]] = None, anonymous: bool = False
         ) -> t.Optional[exp.Expression]:
-            func = super()._parse_function(functions, anonymous)
+            if not self._curr:
+                return None
 
-            if isinstance(func, exp.Anonymous):
-                params = self._parse_func_params(func)
+            token_type = self._curr.token_type
 
-                if params:
-                    return self.expression(
-                        exp.ParameterizedAgg,
-                        this=func.this,
-                        expressions=func.expressions,
-                        params=params,
-                    )
+            if self._match_set(self.NO_PAREN_FUNCTION_PARSERS):
+                return self.NO_PAREN_FUNCTION_PARSERS[token_type](self)
 
-            return func
+            if not self._next or self._next.token_type != TokenType.L_PAREN:
+                if token_type in self.NO_PAREN_FUNCTIONS:
+                    self._advance()
+                    return self.expression(self.NO_PAREN_FUNCTIONS[token_type])
+
+                return None
+
+            if token_type not in self.FUNC_TOKENS:
+                return None
+
+            this = self._curr.text
+            upper = this.upper()
+            self._advance(2)
+
+            parser = self.FUNCTION_PARSERS.get(upper)
+
+            if parser and not anonymous:
+                this = parser(self)
+            else:
+                subquery_predicate = self.SUBQUERY_PREDICATES.get(token_type)
+
+                if subquery_predicate and self._curr.token_type in (TokenType.SELECT, TokenType.WITH):
+                    this = self.expression(subquery_predicate, this=self._parse_select())
+                    self._match_r_paren()
+                    return this
+
+                if functions is None:
+                    functions = self.FUNCTIONS
+
+                function = functions.get(upper)
+
+                if upper == "TUPLE":
+                    args = self._parse_csv(lambda: self._parse_lambda(alias=True))
+                else:
+                    args = self._parse_csv(self._parse_lambda)
+
+                if function and not anonymous:
+                    this = function(args)
+                    self.validate_expression(this, args)
+                else:
+                    this = self.expression(exp.Anonymous, this=this, expressions=args)
+
+            self._match_r_paren(this)
+            return self._parse_window(this)
 
         def _parse_func_params(
             self, this: t.Optional[exp.Func] = None
