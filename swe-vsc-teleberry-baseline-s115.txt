@@ -1,0 +1,193 @@
+User: A parsing issue exists when using sqlglot to parse valid ClickHouse SQL involving tuple expressions with aliased elements and positional access.
+
+The following SQL is valid and executes successfully in ClickHouse:
+
+SELECT CAST(tuple(1 AS `a`, 2 AS `b`, 3.0 AS `c`).2 AS Nullable(String))
+
+However, when parsed using sqlglot (e.g. version 14.0.0) with the ClickHouse dialect, the parser fails.
+
+Reproduction snippet:
+
+import sqlglot as sg
+
+sg.parse_one(
+    "SELECT CAST(tuple(1 AS `a`, 2 AS `b`, 3.0 AS `c`).2 AS Nullable(String))",
+    read="clickhouse"
+)
+
+Task:
+Update sqlglot so that this SQL can be parsed correctly under the ClickHouse dialect, and ensure the fix is covered by automated tests.
+
+Functional requirements:
+1. The ClickHouse dialect must correctly parse tuple() expressions whose arguments use aliases (e.g. "1 AS a", including backtick-quoted aliases).
+2. Positional tuple access (e.g. ".2") must work in combination with such tuple expressions.
+3. CAST targeting ClickHouse-specific types (e.g. Nullable(String)) must continue to work as before.
+4. The change must not break parsing behavior for other dialects.
+
+Design constraints:
+- Do not hard-code special cases for the exact SQL string above.
+- Prefer a solution that generalizes to similar “struct-like” functions that may accept aliased arguments.
+- Keep parsing logic consistent with how the parser handles aliased arguments in other contexts.
+- Avoid dialect-specific hacks unless strictly necessary.
+- Ensure parse → serialize → parse round-trip correctness for ClickHouse.
+
+Mandatory testing scope (must implement):
+A) Add or update unit tests to cover at least the following cases in ClickHouse:
+   1) tuple with aliased args + positional access inside CAST:
+      SELECT CAST(tuple(1 AS `a`, 2 AS `b`, 3.0 AS `c`).2 AS Nullable(String))
+   2) tuple with aliased args without positional access:
+      SELECT tuple(1 AS `a`, 2 AS `b`, 3.0 AS `c`)
+   3) tuple without aliased args but with positional access (regression):
+      SELECT tuple(1, 2, 3).2
+   4) A negative test or assertion ensuring malformed tuple syntax still fails (e.g. missing commas or invalid positional access), to avoid overly-permissive parsing.
+
+B) Round-trip requirement:
+   - For (A1) and (A3), tests must verify that:
+     parse_one(sql, read="clickhouse").sql(dialect="clickhouse")
+     returns SQL that can be parsed again under read="clickhouse".
+
+Delivery requirements (mandatory):
+1) One-click test runner:
+   - Add a script named "run_tests" at the repository root.
+   - It must run the test suite with a single command on Windows.
+   - Allowed formats: .cmd, .bat, .ps1, .py, or a cross-platform script.
+   - If using Python, prefer `python -m pytest` and ensure it works with Python 3.11.
+   - The script must exit with a non-zero exit code if tests fail.
+
+2) README:
+   - Update README (or add a section) explaining:
+     - What bug was fixed (high level)
+     - How to run tests using "run_tests" on Windows
+     - Any prerequisites (Python version, dependencies)
+
+3) Code change summary document:
+   - Add a file named "CODE_DIFF.md" (or similar) that:
+     - Lists every modified file
+     - Explains what changed in each file and why
+     - Describes how the parser/dialect/test changes work together
+     - Mentions any trade-offs or backward compatibility considerations
+
+Acceptance criteria:
+- The reproduction SQL must parse successfully using read="clickhouse".
+- The fix must be validated by the tests described above.
+- All tests must pass via the one-click "run_tests" script on Windows.
+- README and CODE_DIFF.md must be included and accurate.
+
+
+GitHub Copilot: I'll search the codebase for ClickHouse tuple handling and where tuple expressions and positional access are parsed. I'll run a repository-wide grep for 'tuple(' and 'positional' or '.2' patterns.
+
+Searched for regex `tuple\(|Tuple|position|positional|dot access|Index|TupleAccess|tuple access`, 20 results
+
+Read [](file:///c%3A/Bug_Bash/26_02_04/115/sqlglot/expressions.py#1-1), lines 1 to 2000
+
+Read [](file:///c%3A/Bug_Bash/26_02_04/115/sqlglot/expressions.py#2090-2090), lines 2090 to 4089
+
+Read [](file:///c%3A/Bug_Bash/26_02_04/115/sqlglot/parser.py#1-1), lines 1 to 2000
+
+Searched for text `_parse_struct`, 6 results
+
+Read [](file:///c%3A/Bug_Bash/26_02_04/115/sqlglot/parser.py#3776-3776), lines 3776 to 4554
+
+Searched for text `def _parse_function`, 3 results
+
+Read [](file:///c%3A/Bug_Bash/26_02_04/115/sqlglot/parser.py#3068-3068), lines 3068 to 4554
+
+Read [](file:///c%3A/Bug_Bash/26_02_04/115/sqlglot/dialects/clickhouse.py)
+
+Searched for text `class Struct`, 4 results
+
+Read [](file:///c%3A/Bug_Bash/26_02_04/115/sqlglot/expressions.py#4328-4328), lines 4328 to 5765
+
+Searched for text `TokenType.DOT`, 8 results
+
+Read [](file:///c%3A/Bug_Bash/26_02_04/115/sqlglot/parser.py#3008-3008), lines 3008 to 4554
+
+Searched for text `def _parse_column`, 4 results
+
+Read [](file:///c%3A/Bug_Bash/26_02_04/115/sqlglot/parser.py#2956-2956), lines 2956 to 4554
+
+Searched for text `ColumnPosition`, 4 results
+
+Searched for files matching `**/tests`, no matches
+
+Searched for text `clickhouse`, 13 results
+
+Searched for text `pytest`, no results
+
+I'll add a parser and generator mapping for ClickHouse's tuple function, create pytest unit tests, add a run_tests script, update README, and add CODE_DIFF.md. I'll apply the code changes now.
+
+
+
+
+
+
+````
+
+````
+
+
+
+
+
+
+
+````
+
+````
+
+
+Created [](file:///c%3A/Bug_Bash/26_02_04/115/tests)
+
+Created [](file:///c%3A/Bug_Bash/26_02_04/115/tests/test_clickhouse_tuple.py)
+
+Created [](file:///c%3A/Bug_Bash/26_02_04/115/run_tests.py)
+
+Searched for text `README.md`, 3 results
+
+Created [](file:///c%3A/Bug_Bash/26_02_04/115/README.md)
+
+Created [](file:///c%3A/Bug_Bash/26_02_04/115/CODE_DIFF.md)
+
+Ran terminal command: python -m pytest -q
+
+✅ Fix implemented and tested.
+
+Summary of changes
+- Parser: Recognize ClickHouse's tuple(...) as a struct-like function that accepts aliased arguments and positional access.
+- Generator: Serialize struct-like AST nodes as ClickHouse's tuple(...) so parse → sql → parse round-trips work.
+- Tests: Added pytest tests covering positive cases (including round-trip) and a negative case to prevent overly-permissive parsing.
+- Test runner and docs: Added one-click run_tests.py, updated README.md, and added CODE_DIFF.md.
+
+What I changed (files)
+- Modified
+  - clickhouse.py — Added `TUPLE` parsing (delegates to `_parse_struct`) and generator transform for `exp.Struct` → `tuple(...)`.
+- Added
+  - test_clickhouse_tuple.py — pytest test cases:
+    - SELECT CAST(tuple(1 AS `a`, 2 AS `b`, 3.0 AS `c`).2 AS Nullable(String)) (round-trip)
+    - SELECT tuple(1 AS `a`, 2 AS `b`, 3.0 AS `c`)
+    - SELECT tuple(1, 2, 3).2 (round-trip)
+    - Negative test: malformed tuple syntax raises ParseError
+  - run_tests.py — run tests via `python run_tests.py` (exits non-zero on failure)
+  - README.md — description of bug fix and how to run tests on Windows
+  - CODE_DIFF.md — explanation of modifications, rationale, and trade-offs
+
+How to run tests (Windows)
+1. Ensure Python 3.11 and dependencies (pytest) are installed.
+2. From the repository root:
+   python run_tests.py
+This runs pytest on the tests folder and exits with non-zero status if tests fail.
+
+Verification performed
+- Ran full tests locally:
+  4 passed in 0.41s
+
+Notes and design rationale
+- The solution reuses the existing `_parse_struct` behavior (which already accepts aliased arguments) for `tuple(...)` in ClickHouse, keeping parsing consistent and avoiding ad-hoc special-casing.
+- The AST representation uses `exp.Struct` and the ClickHouse generator renders it as `tuple(...)`, preserving round-trip correctness.
+- Parsing behavior for other dialects is unchanged.
+
+If you want, I can:
+- Update/add more tests (e.g., nested tuple accesses, dotted chaining with identifiers).
+- Run a full test suite if there are existing other test files added later.
+
+Made changes.
