@@ -67,6 +67,7 @@ class ClickHouse(Dialect):
         FUNCTION_PARSERS = {
             **parser.Parser.FUNCTION_PARSERS,
             "QUANTILE": lambda self: self._parse_quantile(),
+            "TUPLE": lambda self: self._parse_struct(),
         }
 
         FUNCTION_PARSERS.pop("MATCH")
