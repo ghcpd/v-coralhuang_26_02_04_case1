@@ -70,6 +70,8 @@ class ClickHouse(Dialect):
         }
 
         FUNCTION_PARSERS.pop("MATCH")
+        # Ensure tuple(...) (mapped to TokenType.STRUCT) parses using struct-like rules
+        FUNCTION_PARSERS["TUPLE"] = lambda self: self._parse_struct()
 
         NO_PAREN_FUNCTION_PARSERS = parser.Parser.NO_PAREN_FUNCTION_PARSERS.copy()
         NO_PAREN_FUNCTION_PARSERS.pop(TokenType.ANY)

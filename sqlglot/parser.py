@@ -2991,6 +2991,18 @@ class Parser(metaclass=_Parser):
                 field = self._parse_types()
                 if not field:
                     self.raise_error("Expected type")
+            # Handle numeric positional access after a dotted expression, e.g. tuple(...).2
+            elif op_token == TokenType.DOT and self._curr and self._curr.token_type == TokenType.NUMBER:
+                # consume the number token and create a StructExtract for dot-number access
+                self._advance()
+                value = self._prev.text
+                # Represent the index as a Literal number expression
+                field = exp.Literal.number(value)
+                # Construct a StructExtract node directly and continue the loop
+                this = self.expression(exp.StructExtract, this=this, expression=field)
+                # parse any brackets after this
+                this = self._parse_bracket(this)
+                continue
             elif op and self._curr:
                 self._advance()
                 value = self._prev.text
