@@ -3124,7 +3124,8 @@ class Parser(metaclass=_Parser):
                 functions = self.FUNCTIONS
 
             function = functions.get(upper)
-            args = self._parse_csv(self._parse_lambda)
+            alias_args = token_type == TokenType.STRUCT
+            args = self._parse_csv(lambda: self._parse_lambda(alias=alias_args))
 
             if function and not anonymous:
                 this = function(args)
