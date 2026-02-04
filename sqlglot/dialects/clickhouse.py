@@ -207,6 +207,31 @@ class ClickHouse(Dialect):
         def _parse_function(
             self, functions: t.Optional[t.Dict[str, t.Callable]] = None, anonymous: bool = False
         ) -> t.Optional[exp.Expression]:
+            # ClickHouse's tuple function accepts aliased arguments (e.g. tuple(1 AS a, 2 AS b))
+            # which are similar to struct-like functions. To support this without making
+            # the base parser overly permissive, handle TUPLE specially and parse its
+            # arguments allowing aliases on each element.
+            if self._curr and self._curr.text.upper() == "TUPLE" and self._next and self._next.token_type == TokenType.L_PAREN:
+                # Replicate function parsing but use alias-aware lambda parsing for args
+                this = self._curr.text
+                upper = this.upper()
+                self._advance(2)
+
+                # Parse arguments where each argument may include an alias
+                args = self._parse_csv(lambda: self._parse_lambda(alias=True))
+
+                if functions is None:
+                    functions = self.FUNCTIONS
+
+                if functions.get(upper) and not anonymous:
+                    this = functions[upper](args)
+                    self.validate_expression(this, args)
+                else:
+                    this = self.expression(exp.Anonymous, this=this, expressions=args)
+
+                self._match_r_paren(this)
+                return self._parse_window(this)
+
             func = super()._parse_function(functions, anonymous)
 
             if isinstance(func, exp.Anonymous):
